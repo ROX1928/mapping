@@ -24,6 +24,11 @@ from jinja2 import Template
 st.set_page_config(page_title="Peta Toko Motorola", page_icon="📍", layout="wide")
 DEFAULT_FILE = "Daftar_Toko_Motorola_Fixed.xlsx"
 GOOGLE_BLUE = "#1a73e8"
+NEARBY_STORE_DISTANCE_M = 300
+NEARBY_MARKER_COLORS = [
+    "#d93025", "#188038", "#f29900", "#8430ce", "#00838f", "#c2185b",
+    "#1a73e8", "#7b5e00", "#5f6368", "#b3145a", "#137333", "#e37400",
+]
 
 # kecamatan -> (kode area, nama area, warna)
 AREAS = {
@@ -75,8 +80,45 @@ def pin(color, size=1.0):
     w, h = 30 * size, 40 * size
     svg = (f'<svg width="{w}" height="{h}" viewBox="0 0 30 40" style="filter:drop-shadow(0 2px 2px rgba(0,0,0,.4))">'
            f'<path d="M15 0C6.7 0 0 6.6 0 14.8 0 25 15 40 15 40s15-15 15-25.2C30 6.6 23.3 0 15 0z" fill="{color}"/>'
-           f'<circle cx="15" cy="15" r="6" fill="#fff"/></svg>')
+           f'<circle cx="15" cy="15" r="8" fill="#fff"/>'
+           f'<path d="m9.3 13.5 1.4-3h8.6l1.4 3v1.1c0 .8-.6 1.4-1.4 1.4-.6 0-1-.3-1.3-.8-.3.5-.8.8-1.4.8s-1.1-.3-1.4-.8c-.3.5-.8.8-1.4.8s-1.1-.3-1.4-.8c-.3.5-.7.8-1.3.8-.8 0-1.4-.6-1.4-1.4zM10.7 16.5h8.6v3.8h-8.6zM12.2 17.2h2v3.1h-2z" fill="{color}"/></svg>')
     return folium.DivIcon(html=svg, icon_size=(w, h), icon_anchor=(w / 2, h))
+
+
+def nearby_marker_colors(df, selected=None):
+    positions = {}
+    for index, row in df[["Latitude", "Longitude"]].iterrows():
+        if pd.notna(row["Latitude"]) and pd.notna(row["Longitude"]):
+            positions[index] = (math.radians(row["Latitude"]), row["Longitude"])
+
+    indexes = list(positions)
+    neighbors = {index: set() for index in indexes}
+    for i, index in enumerate(indexes):
+        lat1, lon1 = positions[index]
+        for other in indexes[i + 1:]:
+            lat2, lon2 = positions[other]
+            mean_lat = (lat1 + lat2) / 2
+            distance = 6_371_000 * math.hypot(
+                lat2 - lat1,
+                math.radians(lon2 - lon1) * math.cos(mean_lat),
+            )
+            if distance <= NEARBY_STORE_DISTANCE_M:
+                neighbors[index].add(other)
+                neighbors[other].add(index)
+
+    nearby = [index for index, adjacent in neighbors.items() if adjacent]
+    order = sorted(
+        nearby,
+        key=lambda index: (index != selected, -len(neighbors[index]), str(index)),
+    )
+    colors = {}
+    for index in order:
+        used = {colors[other] for other in neighbors[index] if other in colors}
+        colors[index] = next(
+            (color for color in NEARBY_MARKER_COLORS if color not in used),
+            NEARBY_MARKER_COLORS[len(colors) % len(NEARBY_MARKER_COLORS)],
+        )
+    return colors
 
 
 def visit_order(group):
@@ -412,9 +454,12 @@ def build_map(df, sel, warna_area, cluster):
             except (requests.RequestException, ValueError, KeyError) as exc:
                 st.sidebar.warning(f"Jalur {kd} tidak tersedia: {exc}")
 
+    nearby_colors = nearby_marker_colors(df, sel)
     for r in df.itertuples():
-        warna = r.Warna if warna_area else GOOGLE_BLUE
+        warna = nearby_colors.get(r.Index, r.Warna if warna_area else GOOGLE_BLUE)
         besar = r.Index == sel
+        if besar:
+            warna = "#d93025"
         nama_toko = html.escape(str(r._1))
         alamat = html.escape(str(r.Alamat))
         jarak = distance_from_previous.get(r.Index)
@@ -484,9 +529,16 @@ data = load(src)
 area_pilih = st.sidebar.multiselect("Filter area", [f"{k} · {v[0]}" for k, v in AREAS.items()],
                                     default=[f"{k} · {v[0]}" for k, v in AREAS.items()])
 cari = st.sidebar.text_input("Cari toko / kecamatan")
-warna_area = st.sidebar.toggle("Warna pin per area", value=False, help="Mati = semua pin biru seperti Google Maps")
+warna_area = st.sidebar.toggle(
+    "Warna pin per area",
+    value=False,
+    help="Toko yang berdekatan selalu dibedakan warnanya; opsi ini mengatur warna toko lainnya.",
+)
 cluster = st.sidebar.toggle("Gabungkan pin berdekatan", value=False)
-st.sidebar.caption("Lingkaran menandai sektor. Jalur mengikuti urutan kunjungan; nama toko muncul saat zoom dan label otomatis menghindari tumpang tindih.")
+st.sidebar.caption(
+    "Toko dalam jarak 300 m dibedakan dengan warna pin dan ikon toko. Lingkaran menandai sektor; "
+    "jalur mengikuti urutan kunjungan. Nama toko muncul saat zoom dan label menghindari tumpang tindih."
+)
 
 kode = [a.split(" · ")[0] for a in area_pilih]
 df = data[data["Kode Area"].isin(kode)]
