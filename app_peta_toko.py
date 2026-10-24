@@ -100,11 +100,11 @@ def visit_order(group):
 @st.cache_data(ttl=3600, show_spinner=False)
 def driving_route(points):
     if len(points) < 2:
-        return list(points), []
+        return list(points), [], []
     coordinates = ";".join(f"{lon},{lat}" for lat, lon in points)
     response = requests.get(
         OSRM_URL + coordinates,
-        params={"overview": "full", "geometries": "geojson", "steps": "false"},
+        params={"overview": "full", "geometries": "geojson", "steps": "true"},
         timeout=20,
     )
     response.raise_for_status()
@@ -116,10 +116,57 @@ def driving_route(points):
     if len(legs) != len(points) - 1:
         raise ValueError("Data jarak antar toko tidak lengkap dari layanan rute.")
     distances_km = [leg["distance"] / 1000 for leg in legs]
+    segment_midpoints = []
+    for i, leg in enumerate(legs):
+        midpoint_distance = leg["distance"] / 2
+        walked_distance = 0
+        midpoint = None
+        for step in leg.get("steps", []):
+            step_distance = step.get("distance", 0)
+            coordinates = step.get("geometry", {}).get("coordinates", [])
+            if step_distance <= 0 or not coordinates:
+                continue
+            if walked_distance + step_distance >= midpoint_distance:
+                fraction = (midpoint_distance - walked_distance) / step_distance
+                midpoint = midpoint_on_geometry(coordinates, fraction)
+                break
+            walked_distance += step_distance
+        if midpoint is None:
+            midpoint = (
+                (points[i][0] + points[i + 1][0]) / 2,
+                (points[i][1] + points[i + 1][1]) / 2,
+            )
+        segment_midpoints.append(midpoint)
     return (
         [(lat, lon) for lon, lat in route["geometry"]["coordinates"]],
         distances_km,
+        segment_midpoints,
     )
+
+
+def midpoint_on_geometry(coordinates, fraction):
+    path = [(float(lon), float(lat)) for lon, lat in coordinates]
+    if len(path) < 2:
+        lon, lat = path[0]
+        return lat, lon
+
+    def segment_length(a, b):
+        lat1, lat2 = math.radians(a[1]), math.radians(b[1])
+        dlat = lat2 - lat1
+        dlon = math.radians(b[0] - a[0])
+        h = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+        return 12_742_000 * math.asin(min(1, math.sqrt(h)))
+
+    lengths = [segment_length(a, b) for a, b in zip(path, path[1:])]
+    target = sum(lengths) * fraction
+    travelled = 0
+    for a, b, length in zip(path, path[1:], lengths):
+        if travelled + length >= target and length:
+            part = (target - travelled) / length
+            return a[1] + (b[1] - a[1]) * part, a[0] + (b[0] - a[0]) * part
+        travelled += length
+    lon, lat = path[-1]
+    return lat, lon
 
 
 def distance_label(distance_km):
@@ -146,6 +193,23 @@ def add_label_collision_layout(m, markers):
         white-space: nowrap;
       }
       .store-name-label:before { display: none; }
+      .route-distance-tooltip {
+        background: transparent;
+        border: 0;
+        box-shadow: none;
+        padding: 0;
+      }
+      .route-distance-tooltip:before { display: none; }
+      .route-distance-label {
+        background: rgba(255, 255, 255, .96);
+        border: 2px solid var(--route-color);
+        border-radius: 999px;
+        box-shadow: 0 1px 5px rgba(0, 0, 0, .3);
+        color: #202124;
+        font: 700 12px Arial, sans-serif;
+        padding: 4px 8px;
+        white-space: nowrap;
+      }
     </style>
     """))
     script = f"""
@@ -203,6 +267,27 @@ def add_label_collision_layout(m, markers):
     }})();
     """
     m.get_root().script.add_child(Element(script))
+
+
+def add_route_distance_label(route_layer, point, distance_km, area_color, from_name, to_name):
+    label = folium.Marker(
+        point,
+        icon=folium.DivIcon(icon_size=(1, 1), icon_anchor=(0, 0), html=""),
+        tooltip=folium.Tooltip(
+            f'<span class="route-distance-label" style="--route-color:{area_color}">'
+            f'{distance_km:.1f} km</span>',
+            permanent=True,
+            direction="center",
+            class_name="route-distance-tooltip",
+        ),
+        popup=folium.Popup(
+            f"<b>{html.escape(from_name)} → {html.escape(to_name)}</b>"
+            f"<br>Jarak berkendara: {distance_km:.1f} km",
+            max_width=260,
+        ),
+        interactive=True,
+    ).add_to(route_layer)
+    return label
 
 
 def build_map(df, sel, warna_area, cluster):
@@ -268,7 +353,7 @@ def build_map(df, sel, warna_area, cluster):
                 for row in ordered.itertuples()
             )
             try:
-                route, distances_km = driving_route(points)
+                route, distances_km, segment_midpoints = driving_route(points)
                 for index, distance_km in zip(ordered.index[1:], distances_km):
                     distance_from_previous[index] = distance_km
                 route_layer = folium.FeatureGroup(name=f"Jalur {kd} · {area_name}").add_to(m)
@@ -279,6 +364,18 @@ def build_map(df, sel, warna_area, cluster):
                         f"{sum(distances_km):.1f} km"
                     ),
                 ).add_to(route_layer)
+                for i, (distance_km, midpoint) in enumerate(
+                    zip(distances_km, segment_midpoints)
+                ):
+                    distance_marker = add_route_distance_label(
+                        route_layer,
+                        midpoint,
+                        distance_km,
+                        area_color,
+                        str(ordered.iloc[i]["Nama Toko"]),
+                        str(ordered.iloc[i + 1]["Nama Toko"]),
+                    )
+                    all_markers.append(distance_marker)
             except (requests.RequestException, ValueError, KeyError) as exc:
                 st.sidebar.warning(f"Jalur {kd} tidak tersedia: {exc}")
 
