@@ -1,8 +1,14 @@
 # Peta Toko Motorola
 
 Aplikasi Streamlit untuk melihat lokasi toko per area dengan lingkaran sektor,
-jalur kunjungan mengikuti jalan, label nama toko yang menyesuaikan posisi agar
-tidak bertumpuk, pencarian, navigasi Google Maps, dan unduhan CSV.
+jalur kunjungan mengikuti jalan, jarak berkendara antar toko berurutan, label
+nama toko yang menyesuaikan posisi agar tidak bertumpuk, pencarian, navigasi
+Google Maps, jarak km yang tampil langsung di setiap segmen jalur, unduhan CSV,
+serta screenshot PNG per area dan sektor yang dapat diunduh sebagai ZIP.
+
+Screenshot menampilkan basemap jalan, nomor dan daftar nama toko, rute, serta
+jarak berkendara dari toko sebelumnya. Peta dibuat saat tombol screenshot
+ditekan dan memerlukan koneksi ke layanan tile OpenStreetMap dan OSRM.
 
 ## Jalankan lokal
 

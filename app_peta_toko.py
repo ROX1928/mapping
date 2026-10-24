@@ -20,6 +20,7 @@ from branca.element import Element, MacroElement
 from folium.plugins import Fullscreen, MarkerCluster
 from streamlit_folium import st_folium
 from jinja2 import Template
+from export_peta import AREAS, KEC2AREA, create_screenshot_archive
 
 st.set_page_config(page_title="Peta Toko Motorola", page_icon="📍", layout="wide")
 DEFAULT_FILE = "Daftar_Toko_Motorola_Fixed.xlsx"
@@ -30,15 +31,6 @@ NEARBY_MARKER_COLORS = [
     "#1a73e8", "#7b5e00", "#5f6368", "#b3145a", "#137333", "#e37400",
 ]
 
-# kecamatan -> (kode area, nama area, warna)
-AREAS = {
-    "A1": ("Karawang Kota", "#0b8a7a", ["Karawang Bar."]),
-    "A2": ("Karawang Timur", "#e8710a", ["Klari", "Cikampek"]),
-    "A3": ("Pantura Cilamaya–Pamanukan", "#8430ce", ["Cilamaya Wetan", "Pamanukan", "Binong"]),
-    "A4": ("Purwakarta", "#1a73e8", ["Purwakarta", "Plered"]),
-    "A5": ("Subang Kota", "#d93025", ["Subang"]),
-}
-KEC2AREA = {k: a for a, (_, _, ks) in AREAS.items() for k in ks}
 OSRM_URL = "https://router.project-osrm.org/route/v1/driving/"
 
 
@@ -525,6 +517,28 @@ if src is None:
     st.info(f"Taruh **{DEFAULT_FILE}** di folder yang sama dengan aplikasi ini, atau upload lewat sidebar.")
     st.stop()
 data = load(src)
+
+with st.expander("🖼️ Screenshot detail per area dan sektor", expanded=False):
+    st.caption(
+        "Buat peta PNG untuk setiap area dan kecamatan, lengkap dengan nomor toko, "
+        "nama, rute jalan, dan jarak berkendara antar toko."
+    )
+    if st.button("Buat screenshot peta", use_container_width=True):
+        try:
+            with st.spinner("Menyusun screenshot peta, rute, dan jarak..."):
+                screenshot_zip, screenshot_count = create_screenshot_archive(data)
+            st.session_state["screenshot_zip"] = screenshot_zip
+            st.session_state["screenshot_count"] = screenshot_count
+        except (requests.RequestException, ValueError, KeyError) as exc:
+            st.error(f"Screenshot peta gagal dibuat: {exc}")
+    if "screenshot_zip" in st.session_state:
+        st.download_button(
+            f"⬇️ Download {st.session_state['screenshot_count']} screenshot (ZIP)",
+            data=st.session_state["screenshot_zip"],
+            file_name="screenshots_area_dan_sektor.zip",
+            mime="application/zip",
+            use_container_width=True,
+        )
 
 area_pilih = st.sidebar.multiselect("Filter area", [f"{k} · {v[0]}" for k, v in AREAS.items()],
                                     default=[f"{k} · {v[0]}" for k, v in AREAS.items()])
