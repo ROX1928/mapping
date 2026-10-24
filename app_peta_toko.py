@@ -37,15 +37,32 @@ NEARBY_MARKER_COLORS = [
 ]
 
 OSRM_URL = "https://router.project-osrm.org/route/v1/driving/"
+AREA_CONFIG = tuple(
+    (code, area_name, color, tuple(districts))
+    for code, (area_name, color, districts) in AREAS.items()
+)
 
 
 @st.cache_data
-def load(src):
+def load(src, area_config):
     d = pd.read_excel(src)
     d["Kecamatan"] = d["Alamat"].str.extract(r"Kec\. ([^,]+)")
-    d["Kode Area"] = d["Kecamatan"].map(KEC2AREA).fillna("-")
-    d["Area"] = d["Kode Area"].map(lambda a: AREAS[a][0] if a in AREAS else "Belum diatur")
-    d["Warna"] = d["Kode Area"].map(lambda a: AREAS[a][1] if a in AREAS else "#5f6368")
+    district_to_area = {
+        district: code
+        for code, _, _, districts in area_config
+        for district in districts
+    }
+    area_details = {
+        code: (area_name, color)
+        for code, area_name, color, _ in area_config
+    }
+    d["Kode Area"] = d["Kecamatan"].map(district_to_area).fillna("-")
+    d["Area"] = d["Kode Area"].map(
+        lambda code: area_details[code][0] if code in area_details else "Belum diatur"
+    )
+    d["Warna"] = d["Kode Area"].map(
+        lambda code: area_details[code][1] if code in area_details else "#5f6368"
+    )
     d["Kecamatan"] = d["Kecamatan"].replace({"Karawang Bar.": "Karawang Barat"})
     d["Navigasi"] = d.apply(lambda r: f"https://www.google.com/maps/dir/?api=1&destination={r.Latitude},{r.Longitude}", axis=1)
     return d.sort_values(["Kode Area", "Nama Toko"]).reset_index(drop=True)
@@ -541,7 +558,7 @@ src = up if up else (DEFAULT_FILE if os.path.exists(DEFAULT_FILE) else None)
 if src is None:
     st.info(f"Taruh **{DEFAULT_FILE}** di folder yang sama dengan aplikasi ini, atau upload lewat sidebar.")
     st.stop()
-data = load(src)
+data = load(src, AREA_CONFIG)
 
 with st.expander("🖼️ Screenshot detail per area dan sektor", expanded=False):
     st.caption(
@@ -574,7 +591,7 @@ with st.expander("🖼️ Screenshot detail per area dan sektor", expanded=False
         st.download_button(
             "⬇️ Download Excel detail (5 area + 9 sektor)",
             data=st.session_state["detail_workbook"],
-            file_name="detail_toko_per_area_dan_sektor_revisi2.xlsx",
+            file_name="detail_toko_per_area_dan_sektor_revisi3.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
