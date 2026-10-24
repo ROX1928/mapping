@@ -149,7 +149,7 @@ def add_label_collision_layout(m, markers):
           const tooltip = marker.getTooltip();
           const element = tooltip && tooltip.getElement();
           if (!element) return;
-          if (zoom < 10) {{
+          if (zoom < 9) {{
             element.style.visibility = "hidden";
             return;
           }}
@@ -272,7 +272,7 @@ def build_map(df, sel, warna_area, cluster):
         ).add_to(layer)
         all_markers.append(marker)
     add_label_collision_layout(m, all_markers)
-    folium.LayerControl(collapsed=False).add_to(m)
+    folium.LayerControl(collapsed=True).add_to(m)
     if sel is not None and sel in df.index:
         m.location = [df.Latitude[sel], df.Longitude[sel]]
         m.options["zoom"] = 16
@@ -282,6 +282,27 @@ def build_map(df, sel, warna_area, cluster):
 
 
 # ---------------- UI ----------------
+st.markdown("""
+<style>
+  .block-container { padding-top: 1.4rem; padding-bottom: 1.5rem; }
+  [data-testid="stMetric"] { padding: .35rem .55rem; }
+  [data-testid="stMetricLabel"] { font-size: .8rem; }
+  [data-testid="stMetricValue"] { font-size: 1.25rem; }
+  @media (max-width: 640px) {
+    .block-container { padding: .8rem .65rem 1rem; }
+    h1 { font-size: 1.45rem !important; }
+    h2 { font-size: 1.15rem !important; }
+    [data-testid="stHorizontalBlock"] { gap: .35rem; }
+    [data-testid="stMetric"] { padding: .15rem .25rem; }
+    [data-testid="stMetricLabel"] { font-size: .68rem; }
+    [data-testid="stMetricValue"] { font-size: 1rem; }
+    iframe[title="streamlit_folium.st_folium"] { height: 58vh !important; min-height: 360px !important; }
+    [data-testid="stDataFrame"] { font-size: .8rem; }
+  }
+</style>
+""", unsafe_allow_html=True)
+st.title("📍 Peta Toko Motorola")
+
 st.sidebar.header("📍 Peta Toko Motorola")
 up = st.sidebar.file_uploader("Upload Excel (opsional)", type=["xlsx"])
 src = up if up else (DEFAULT_FILE if os.path.exists(DEFAULT_FILE) else None)
@@ -308,37 +329,37 @@ if "sel" not in st.session_state:
 if st.session_state.sel not in df.index:
     st.session_state.sel = None
 
-k1, k2, k3 = st.columns(3)
-k1.metric("Jumlah toko", len(df))
-k2.metric("Jumlah area", df["Kode Area"].nunique())
-k3.metric("Jumlah kecamatan", df["Kecamatan"].nunique())
+st.caption(f"{len(df)} toko · {df['Kode Area'].nunique()} sektor · {df['Kecamatan'].nunique()} kecamatan")
+st_folium(build_map(df, st.session_state.sel, warna_area, cluster), height=560,
+          use_container_width=True, returned_objects=[])
 
-kiri, kanan = st.columns([2.2, 1])
-with kiri:
-    st_folium(build_map(df, st.session_state.sel, warna_area, cluster), height=620,
-              use_container_width=True, returned_objects=[])
-with kanan:
-    st.subheader("Daftar toko")
-    if st.session_state.sel is not None and st.button("↩︎ Tampilkan semua", use_container_width=True):
-        st.session_state.sel = None
-        st.rerun()
-    box = st.container(height=560)
-    with box:
-        for kd, g in df.groupby("Kode Area"):
-            st.markdown(f"**{kd} · {g['Area'].iloc[0]}** · {len(g)} toko")
-            for idx, r in g.iterrows():
-                if st.button(f"📍 {r['Nama Toko']}", key=f"b{idx}", use_container_width=True,
-                             type="primary" if idx == st.session_state.sel else "secondary"):
-                    st.session_state.sel = idx
-                    st.rerun()
-                st.caption(f"{r['Kecamatan']} · [Navigasi]({r['Navigasi']})")
-
-st.divider()
-st.subheader("Tabel lengkap")
-tabel = df[["Nama Toko", "Kecamatan", "Kode Area", "Area", "Alamat", "Latitude", "Longitude", "Navigasi"]]
-st.dataframe(tabel, use_container_width=True, hide_index=True,
-             column_config={"Navigasi": st.column_config.LinkColumn("Navigasi", display_text="Buka"),
-                            "Latitude": st.column_config.NumberColumn(format="%.6f"),
-                            "Longitude": st.column_config.NumberColumn(format="%.6f")})
-st.download_button("⬇️ Download CSV", data=tabel.drop(columns="Navigasi").to_csv(index=False).encode("utf-8-sig"),
-                   file_name="daftar_toko_per_area.csv", mime="text/csv")
+with st.expander(f"Daftar toko ({len(df)})", expanded=False):
+    if not df.empty:
+        pilihan = [None] + list(df.index)
+        selected = st.selectbox(
+            "Pilih toko untuk fokus di peta",
+            options=pilihan,
+            index=pilihan.index(st.session_state.sel) if st.session_state.sel in pilihan else 0,
+            format_func=lambda idx: "Semua toko" if idx is None else (
+                f"{df.at[idx, 'Nama Toko']} · {df.at[idx, 'Kode Area']}"
+            ),
+            label_visibility="collapsed",
+        )
+        if selected != st.session_state.sel:
+            st.session_state.sel = selected
+            st.rerun()
+        tabel = df[["Nama Toko", "Kode Area", "Kecamatan"]]
+        st.dataframe(
+            tabel, width="stretch", height=min(280, 38 + len(tabel) * 34),
+            row_height=30, hide_index=True,
+        )
+        lengkap = df[["Nama Toko", "Kecamatan", "Kode Area", "Area", "Alamat",
+                      "Latitude", "Longitude", "Navigasi"]]
+        st.download_button(
+            "⬇️ Download daftar toko (CSV)",
+            data=lengkap.drop(columns="Navigasi").to_csv(index=False).encode("utf-8-sig"),
+            file_name="daftar_toko_per_area.csv", mime="text/csv",
+            use_container_width=True,
+        )
+    else:
+        st.info("Tidak ada toko untuk filter yang dipilih.")
