@@ -16,9 +16,10 @@ import pandas as pd
 import requests
 import streamlit as st
 import folium
-from branca.element import Element
+from branca.element import Element, MacroElement
 from folium.plugins import Fullscreen, MarkerCluster
 from streamlit_folium import st_folium
+from jinja2 import Template
 
 st.set_page_config(page_title="Peta Toko Motorola", page_icon="📍", layout="wide")
 DEFAULT_FILE = "Daftar_Toko_Motorola_Fixed.xlsx"
@@ -177,22 +178,34 @@ def distance_label(distance_km):
     return f"{distance_km:.1f} km"
 
 
-def add_label_collision_layout(m, markers):
-    marker_names = ",".join(marker.get_name() for marker in markers)
+def add_label_collision_layout(m, label_pairs):
     m.get_root().header.add_child(Element("""
     <style>
+      .store-name-icon { background: transparent; border: 0; }
       .store-name-label {
+        position: absolute;
+        left: 0;
+        top: 0;
+        display: inline-block;
+        width: max-content;
+        max-width: 164px;
         background: rgba(255, 255, 255, .96);
         border: 1px solid #1a73e8;
         border-radius: 4px;
         box-shadow: 0 1px 4px rgba(0, 0, 0, .25);
+        box-sizing: border-box;
         color: #202124;
-        font: 12px Arial, sans-serif;
-        font-weight: 600;
-        padding: 3px 6px;
-        white-space: nowrap;
+        font: 600 11px/1.2 Arial, sans-serif;
+        overflow-wrap: anywhere;
+        padding: 4px 7px;
       }
-      .store-name-label:before { display: none; }
+      @media (max-width: 600px) {
+        .store-name-label {
+          font-size: 10px;
+          max-width: 124px;
+          padding: 3px 5px;
+        }
+      }
       .route-distance-tooltip {
         background: transparent;
         border: 0;
@@ -212,61 +225,80 @@ def add_label_collision_layout(m, markers):
       }
     </style>
     """))
+    marker_names = ",".join(marker.get_name() for marker, _ in label_pairs)
+    label_names = ",".join(label.get_name() for _, label in label_pairs)
     script = f"""
     (function() {{
       const map = {m.get_name()};
       const markers = [{marker_names}];
-      const candidates = [
-        [0, -34], [0, 34], [72, 0], [-72, 0],
-        [55, -28], [-55, -28], [55, 28], [-55, 28],
-        [0, -58], [0, 58], [108, 0], [-108, 0],
-        [88, -42], [-88, -42], [88, 42], [-88, 42]
-      ];
+      const labels = [{label_names}];
       function arrangeLabels() {{
         const zoom = map.getZoom();
+        const size = map.getSize();
+        const narrow = size.x < 600;
         const occupied = [];
-        markers.forEach(function(marker) {{
-          const tooltip = marker.getTooltip();
-          const element = tooltip && tooltip.getElement();
+        markers.forEach(function(marker, index) {{
+          const label = labels[index];
+          const icon = label.getElement();
+          const element = icon && icon.querySelector(".store-name-label");
           if (!element) return;
           if (zoom < 9) {{
-            element.style.visibility = "hidden";
+            icon.style.visibility = "hidden";
             return;
           }}
-          element.style.visibility = "visible";
-          const width = element.offsetWidth;
-          const height = element.offsetHeight;
-          let selected = candidates[0];
-          for (const offset of candidates) {{
-            const point = map.latLngToLayerPoint(marker.getLatLng()).add(L.point(offset[0], offset[1]));
-            const box = {{
-              left: point.x - width / 2 - 4,
-              right: point.x + width / 2 + 4,
-              top: point.y - height / 2 - 3,
-              bottom: point.y + height / 2 + 3
-            }};
-            const overlaps = occupied.some(function(other) {{
-              return box.left < other.right && box.right > other.left &&
-                     box.top < other.bottom && box.bottom > other.top;
-            }});
-            if (!overlaps) {{
-              selected = offset;
-              occupied.push(box);
-              break;
+          icon.style.visibility = "visible";
+          const rect = element.getBoundingClientRect();
+          const width = rect.width;
+          const height = rect.height;
+          const markerPoint = map.latLngToContainerPoint(marker.getLatLng());
+          let selected = null;
+          let selectedBox = null;
+          const gap = narrow ? 12 : 16;
+          const verticalAdjustments = [0];
+          const sides = index % 2 ? ["right", "left"] : ["left", "right"];
+          for (const side of sides) {{
+            for (const verticalAdjustment of verticalAdjustments) {{
+              const left = side === "left" ? markerPoint.x - width - gap : markerPoint.x + gap;
+              const top = markerPoint.y - height / 2 + verticalAdjustment;
+              const box = {{
+                left: left - 3, right: left + width + 3,
+                top: top - 3, bottom: top + height + 3
+              }};
+              const overlaps = occupied.some(function(other) {{
+                return box.left < other.right && box.right > other.left &&
+                       box.top < other.bottom && box.bottom > other.top;
+              }});
+              const insideViewport = left >= 2 && left + width <= size.x - 2 &&
+                top >= 2 && top + height <= size.y - 2;
+              if (!overlaps && insideViewport) {{
+                selected = [left, top];
+                selectedBox = box;
+                break;
+              }}
             }}
+            if (selected) break;
           }}
-          tooltip.options.direction = "center";
-          tooltip.options.offset = L.point(selected[0], selected[1]);
-          tooltip.setLatLng(marker.getLatLng());
+          if (!selected) {{
+            icon.style.visibility = "hidden";
+            return;
+          }}
+          occupied.push(selectedBox);
+          const labelPoint = map.containerPointToLatLng(L.point(selected[0], selected[1]));
+          label.setLatLng(labelPoint);
         }});
       }}
       map.whenReady(function() {{
         arrangeLabels();
-        map.on("zoomend moveend", arrangeLabels);
+        map.on("zoomend moveend resize", arrangeLabels);
+        setTimeout(arrangeLabels, 100);
       }});
     }})();
     """
-    m.get_root().script.add_child(Element(script))
+    label_layout = MacroElement()
+    label_layout._template = Template(
+        "{% macro script(this, kwargs) %}" + script + "{% endmacro %}"
+    )
+    m.add_child(label_layout, name="store_label_layout")
 
 
 def add_route_distance_label(route_layer, point, distance_km, area_color, from_name, to_name):
@@ -321,7 +353,8 @@ def build_map(df, sel, warna_area, cluster):
     Fullscreen().add_to(m)
     marker_group = folium.FeatureGroup(name="Titik toko").add_to(m)
     layer = MarkerCluster().add_to(marker_group) if cluster else marker_group
-    all_markers = []
+    label_pairs = []
+    label_group = folium.FeatureGroup(name="Nama toko").add_to(m)
     for kd, area_group in df.groupby("Kode Area", sort=True):
         if kd not in AREAS or area_group.empty:
             continue
@@ -375,7 +408,7 @@ def build_map(df, sel, warna_area, cluster):
                         str(ordered.iloc[i]["Nama Toko"]),
                         str(ordered.iloc[i + 1]["Nama Toko"]),
                     )
-                    all_markers.append(distance_marker)
+
             except (requests.RequestException, ValueError, KeyError) as exc:
                 st.sidebar.warning(f"Jalur {kd} tidak tersedia: {exc}")
 
@@ -392,13 +425,23 @@ def build_map(df, sel, warna_area, cluster):
         marker = folium.Marker(
             (r.Latitude, r.Longitude),
             icon=pin("#d93025" if besar else warna, 1.3 if besar else 1.0),
-            tooltip=folium.Tooltip(nama_toko, permanent=True, direction="center",
-                                   class_name="store-name-label"),
             popup=folium.Popup(popup, max_width=280),
         ).add_to(layer)
-        all_markers.append(marker)
+        label = folium.Marker(
+            (r.Latitude, r.Longitude),
+            icon=folium.DivIcon(
+                html=f'<div class="store-name-label">{nama_toko}</div>',
+                icon_size=(176, 54),
+                icon_anchor=(0, 0),
+                class_name="store-name-icon",
+            ),
+            interactive=False,
+            keyboard=False,
+            z_index_offset=1000,
+        ).add_to(label_group)
+        label_pairs.append((marker, label))
     m.store_distances = distance_from_previous
-    add_label_collision_layout(m, all_markers)
+    add_label_collision_layout(m, label_pairs)
     folium.LayerControl(collapsed=True).add_to(m)
     if sel is not None and sel in df.index:
         m.location = [df.Latitude[sel], df.Longitude[sel]]
