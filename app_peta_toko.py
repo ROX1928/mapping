@@ -100,7 +100,7 @@ def visit_order(group):
 @st.cache_data(ttl=3600, show_spinner=False)
 def driving_route(points):
     if len(points) < 2:
-        return list(points)
+        return list(points), []
     coordinates = ";".join(f"{lon},{lat}" for lat, lon in points)
     response = requests.get(
         OSRM_URL + coordinates,
@@ -111,7 +111,23 @@ def driving_route(points):
     routes = response.json().get("routes", [])
     if not routes:
         raise ValueError("Layanan rute tidak mengembalikan jalur.")
-    return [(lat, lon) for lon, lat in routes[0]["geometry"]["coordinates"]]
+    route = routes[0]
+    legs = route.get("legs", [])
+    if len(legs) != len(points) - 1:
+        raise ValueError("Data jarak antar toko tidak lengkap dari layanan rute.")
+    distances_km = [leg["distance"] / 1000 for leg in legs]
+    return (
+        [(lat, lon) for lon, lat in route["geometry"]["coordinates"]],
+        distances_km,
+    )
+
+
+def distance_label(distance_km):
+    if distance_km is None:
+        return "Titik awal"
+    if not math.isfinite(distance_km):
+        return "Jarak tidak tersedia"
+    return f"{distance_km:.1f} km"
 
 
 def add_label_collision_layout(m, markers):
@@ -191,6 +207,7 @@ def add_label_collision_layout(m, markers):
 
 def build_map(df, sel, warna_area, cluster):
     m = folium.Map(tiles=None, control_scale=True, zoom_control=True)
+    distance_from_previous = {index: None for index in df.index}
     key = google_api_key()
     google_ok = False
     if key:
@@ -241,17 +258,26 @@ def build_map(df, sel, warna_area, cluster):
         ).add_to(area_layer)
 
         ordered = visit_order(area_group)
+        if len(ordered):
+            distance_from_previous[ordered.index[0]] = None
+        for index in ordered.index[1:]:
+            distance_from_previous[index] = float("nan")
         if len(ordered) > 1:
             points = tuple(
                 (float(row.Latitude), float(row.Longitude))
                 for row in ordered.itertuples()
             )
             try:
-                route = driving_route(points)
+                route, distances_km = driving_route(points)
+                for index, distance_km in zip(ordered.index[1:], distances_km):
+                    distance_from_previous[index] = distance_km
                 route_layer = folium.FeatureGroup(name=f"Jalur {kd} · {area_name}").add_to(m)
                 folium.PolyLine(
                     route, color=area_color, weight=4, opacity=0.8,
-                    tooltip=f"Jalur kunjungan · {kd} {area_name}",
+                    tooltip=(
+                        f"Jalur kunjungan · {kd} {area_name} · "
+                        f"{sum(distances_km):.1f} km"
+                    ),
                 ).add_to(route_layer)
             except (requests.RequestException, ValueError, KeyError) as exc:
                 st.sidebar.warning(f"Jalur {kd} tidak tersedia: {exc}")
@@ -261,7 +287,10 @@ def build_map(df, sel, warna_area, cluster):
         besar = r.Index == sel
         nama_toko = html.escape(str(r._1))
         alamat = html.escape(str(r.Alamat))
-        popup = (f"<b>{nama_toko}</b><br>{r.Kecamatan} · {r.Area}<br><small>{alamat}</small><br>"
+        jarak = distance_from_previous.get(r.Index)
+        jarak_html = f"<br>Jarak dari toko sebelumnya: {distance_label(jarak)}"
+        popup = (f"<b>{nama_toko}</b><br>{r.Kecamatan} · {r.Area}{jarak_html}"
+                 f"<br><small>{alamat}</small><br>"
                  f"<a href='{r.Navigasi}' target='_blank'>Rute di Google Maps</a>")
         marker = folium.Marker(
             (r.Latitude, r.Longitude),
@@ -271,6 +300,7 @@ def build_map(df, sel, warna_area, cluster):
             popup=folium.Popup(popup, max_width=280),
         ).add_to(layer)
         all_markers.append(marker)
+    m.store_distances = distance_from_previous
     add_label_collision_layout(m, all_markers)
     folium.LayerControl(collapsed=True).add_to(m)
     if sel is not None and sel in df.index:
@@ -330,7 +360,8 @@ if st.session_state.sel not in df.index:
     st.session_state.sel = None
 
 st.caption(f"{len(df)} toko · {df['Kode Area'].nunique()} sektor · {df['Kecamatan'].nunique()} kecamatan")
-st_folium(build_map(df, st.session_state.sel, warna_area, cluster), height=560,
+map_object = build_map(df, st.session_state.sel, warna_area, cluster)
+st_folium(map_object, height=560,
           use_container_width=True, returned_objects=[])
 
 with st.expander(f"Daftar toko ({len(df)})", expanded=False):
@@ -341,16 +372,21 @@ with st.expander(f"Daftar toko ({len(df)})", expanded=False):
             options=pilihan,
             index=pilihan.index(st.session_state.sel) if st.session_state.sel in pilihan else 0,
             format_func=lambda idx: "Semua toko" if idx is None else (
-                f"{df.at[idx, 'Nama Toko']} · {df.at[idx, 'Kode Area']}"
+                f"{df.at[idx, 'Nama Toko']} · {df.at[idx, 'Kode Area']} · "
+                f"{distance_label(map_object.store_distances[idx])}"
             ),
             label_visibility="collapsed",
         )
         if selected != st.session_state.sel:
             st.session_state.sel = selected
             st.rerun()
-        tabel = df[["Nama Toko", "Kode Area", "Kecamatan"]]
+        tabel = df[["Nama Toko", "Kode Area", "Kecamatan"]].copy()
+        tabel["Jarak dari toko sebelumnya"] = [
+            distance_label(map_object.store_distances[idx])
+            for idx in tabel.index
+        ]
         st.dataframe(
-            tabel, width="stretch", height=min(280, 38 + len(tabel) * 34),
+            tabel.reset_index(drop=True), width="stretch", height=min(280, 38 + len(tabel) * 34),
             row_height=30, hide_index=True,
         )
         lengkap = df[["Nama Toko", "Kecamatan", "Kode Area", "Area", "Alamat",
