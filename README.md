@@ -19,7 +19,8 @@ alamat, koordinat, dan tautan navigasi.
 Jarak pada area/sektor dengan satu toko dibiarkan kosong dan diberi keterangan
 bahwa tidak ada rute antar toko; jarak lain ditampilkan hingga tiga angka desimal
 agar perjalanan pendek tidak terlihat sebagai 0 km. File unduhan terbaru bernama
-`detail_toko_per_area_dan_sektor_revisi.xlsx`.
+`detail_toko_per_area_dan_sektor_revisi2.xlsx`. Ringkasan area juga menampilkan
+daftar kecamatan dan nama toko yang dikelompokkan menurut kecamatan.
 
 ## Jalankan lokal
 

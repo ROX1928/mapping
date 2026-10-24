@@ -442,11 +442,20 @@ def create_detailed_workbook(data):
         is_area = title.startswith("Area ")
         sector_name = "Semua sektor" if is_area else str(ordered.iloc[0]["Kecamatan"])
         total_distance = sum(distances)
+        stores_by_district = [
+            (str(district), district_group["Nama Toko"].astype(str).tolist())
+            for district, district_group in ordered.groupby("Kecamatan", sort=True)
+        ]
         summary_rows.append({
             "Jenis": "Area" if is_area else "Sektor",
             "Kode Area": area_code,
             "Area": area_name,
             "Sektor / Kecamatan": sector_name,
+            "Daftar Kecamatan": "\n".join(district for district, _ in stores_by_district),
+            "Nama Toko per Kecamatan": "\n".join(
+                f"{district}: {', '.join(store_names)}"
+                for district, store_names in stores_by_district
+            ),
             "Jumlah Toko": len(ordered),
             "Total Jarak Berkendara (km)": round(total_distance, 3) if distances else None,
             "Keterangan Jarak": (
@@ -500,6 +509,10 @@ def create_detailed_workbook(data):
                 header = str(column_cells[0].value or "")
                 if header in {"Alamat", "Rute Kunjungan"}:
                     width = 48
+                elif header == "Daftar Kecamatan":
+                    width = 24
+                elif header == "Nama Toko per Kecamatan":
+                    width = 52
                 elif header == "Keterangan Jarak":
                     width = 34
                 elif header == "Navigasi Google Maps":
@@ -515,9 +528,19 @@ def create_detailed_workbook(data):
                             cell.hyperlink = cell.value
                             cell.style = "Hyperlink"
                 for cell in column_cells[1:]:
-                    cell.alignment = Alignment(vertical="top", wrap_text=header in {"Alamat", "Rute Kunjungan"})
+                    cell.alignment = Alignment(
+                        vertical="top",
+                        wrap_text=header in {
+                            "Alamat", "Rute Kunjungan", "Daftar Kecamatan", "Nama Toko per Kecamatan"
+                        },
+                    )
                     if header in {"Jarak (km)", "Total Jarak Berkendara (km)"} and cell.value is not None:
                         cell.number_format = "0.000"
+            if worksheet.title == "Ringkasan":
+                for row_index in range(2, worksheet.max_row + 1):
+                    district_lines = str(worksheet.cell(row_index, 5).value or "").count("\n") + 1
+                    store_lines = str(worksheet.cell(row_index, 6).value or "").count("\n") + 1
+                    worksheet.row_dimensions[row_index].height = max(24, 18 * max(district_lines, store_lines))
             if worksheet.max_row > 1 and worksheet.max_column > 0:
                 table = Table(
                     displayName=f"Data{table_number}",
