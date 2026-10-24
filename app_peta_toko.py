@@ -59,6 +59,13 @@ def google_api_key():
         return os.getenv("GOOGLE_MAPS_API_KEY")
 
 
+def carto_api_key():
+    try:
+        return st.secrets.get("CARTO_API_KEY") or os.getenv("CARTO_API_KEY")
+    except st.errors.StreamlitSecretNotFoundError:
+        return os.getenv("CARTO_API_KEY")
+
+
 def pin(color, size=1.0):
     w, h = 30 * size, 40 * size
     svg = (f'<svg width="{w}" height="{h}" viewBox="0 0 30 40" style="filter:drop-shadow(0 2px 2px rgba(0,0,0,.4))">'
@@ -78,13 +85,20 @@ def build_map(df, sel, warna_area, cluster):
                              attr="Map data © Google", name="Google Maps", max_zoom=20).add_to(m)
             google_ok = True
         except Exception as e:
-            st.sidebar.warning(f"Google Map Tiles gagal ({str(e)[:60]}), pakai peta CARTO.")
+            st.sidebar.warning(f"Google Map Tiles gagal ({str(e)[:60]}), pakai basemap cadangan.")
     if not google_ok:
-        folium.TileLayer(
-            "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-            attr='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-            name="OpenStreetMap",
-        ).add_to(m)
+        carto_key = carto_api_key()
+        if carto_key:
+            tile_url = ("https://basemaps.cartocdn.com/rastertiles/voyager/"
+                        "{z}/{x}/{y}{r}.png?key=" + urllib.parse.quote(carto_key, safe=""))
+            folium.TileLayer(tile_url, attr="© OpenStreetMap © CARTO",
+                             name="CARTO Voyager", subdomains="abcd").add_to(m)
+        else:
+            folium.TileLayer(
+                "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                attr='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                name="OpenStreetMap",
+            ).add_to(m)
     folium.TileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
                      attr="Esri", name="Satelit", show=False).add_to(m)
     Fullscreen().add_to(m)
