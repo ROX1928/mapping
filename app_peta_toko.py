@@ -20,7 +20,12 @@ from branca.element import Element, MacroElement
 from folium.plugins import Fullscreen, MarkerCluster
 from streamlit_folium import st_folium
 from jinja2 import Template
-from export_peta import AREAS, KEC2AREA, create_screenshot_archive
+from export_peta import (
+    AREAS,
+    KEC2AREA,
+    create_detailed_workbook,
+    create_screenshot_archive,
+)
 
 st.set_page_config(page_title="Peta Toko Motorola", page_icon="📍", layout="wide")
 DEFAULT_FILE = "Daftar_Toko_Motorola_Fixed.xlsx"
@@ -557,6 +562,20 @@ with st.expander("🖼️ Screenshot detail per area dan sektor", expanded=False
             data=st.session_state["screenshot_zip"],
             file_name="screenshots_area_dan_sektor.zip",
             mime="application/zip",
+            use_container_width=True,
+        )
+    if st.button("Buat Excel detail area dan sektor", use_container_width=True):
+        try:
+            with st.spinner("Menghitung urutan dan jarak jalan untuk Excel..."):
+                st.session_state["detail_workbook"] = create_detailed_workbook(data)
+        except (requests.RequestException, ValueError, KeyError) as exc:
+            st.error(f"Excel detail gagal dibuat: {exc}")
+    if "detail_workbook" in st.session_state:
+        st.download_button(
+            "⬇️ Download Excel detail (5 area + 9 sektor)",
+            data=st.session_state["detail_workbook"],
+            file_name="detail_toko_per_area_dan_sektor.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
 

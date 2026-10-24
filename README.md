@@ -12,6 +12,11 @@ Screenshot menampilkan basemap jalan, nomor dan daftar nama toko, rute, serta
 jarak berkendara dari toko sebelumnya. Peta dibuat saat tombol screenshot
 ditekan dan memerlukan koneksi ke layanan tile OpenStreetMap dan OSRM.
 
+Excel detail dapat diunduh dari bagian **Screenshot detail per area dan
+sektor**. Workbook berisi lembar ringkasan, lembar rute per area, dan lembar
+rute per kecamatan, dengan urutan kunjungan, jarak berkendara antar toko,
+alamat, koordinat, dan tautan navigasi.
+
 ## Jalankan lokal
 
 ```bash

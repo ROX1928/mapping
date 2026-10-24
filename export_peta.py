@@ -411,3 +411,126 @@ def save_screenshots(data, output_dir):
         for filename, image in images.items():
             output.writestr(filename, image)
     return archive_path, len(images)
+
+
+def create_detailed_workbook(data):
+    required = {"Nama Toko", "Alamat", "Latitude", "Longitude", "Kode Area", "Area", "Kecamatan"}
+    missing = required - set(data.columns)
+    if missing:
+        raise ValueError(f"Kolom data toko tidak ditemukan: {', '.join(sorted(missing))}.")
+    if data.empty:
+        raise ValueError("Tidak ada data toko untuk dibuatkan Excel detail.")
+    if data[["Latitude", "Longitude"]].isna().any().any():
+        raise ValueError("Koordinat Latitude/Longitude kosong; lengkapi data sebelum membuat Excel.")
+
+    groups = []
+    for code, (area_name, area_color, _) in AREAS.items():
+        area_group = data[data["Kode Area"] == code]
+        if area_group.empty:
+            continue
+        groups.append((f"Area {code} {area_name}", area_group, area_color))
+        for district, district_group in area_group.groupby("Kecamatan", sort=True):
+            groups.append((f"Sektor {code} {district}", district_group, area_color))
+
+    summary_rows = []
+    prepared_groups = []
+    for title, group, _ in groups:
+        ordered = _order_stores(group)
+        _, distances, _ = _route_for(ordered, title)
+        area_code = str(ordered.iloc[0]["Kode Area"])
+        area_name = str(ordered.iloc[0]["Area"])
+        is_area = title.startswith("Area ")
+        sector_name = "Semua sektor" if is_area else str(ordered.iloc[0]["Kecamatan"])
+        total_distance = sum(distances)
+        summary_rows.append({
+            "Jenis": "Area" if is_area else "Sektor",
+            "Kode Area": area_code,
+            "Area": area_name,
+            "Sektor / Kecamatan": sector_name,
+            "Jumlah Toko": len(ordered),
+            "Total Jarak Berkendara (km)": round(total_distance, 2),
+            "Rute Kunjungan": " → ".join(ordered["Nama Toko"].astype(str)),
+        })
+        prepared_groups.append((title, ordered, distances))
+
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        summary = pd.DataFrame(summary_rows)
+        summary.to_excel(writer, sheet_name="Ringkasan", index=False)
+        for title, ordered, distances in prepared_groups:
+            rows = []
+            for position, (_, row) in enumerate(ordered.iterrows()):
+                distance = distances[position - 1] if position else None
+                previous_store = str(ordered.iloc[position - 1]["Nama Toko"]) if position else ""
+                rows.append({
+                    "No. Urut": position + 1,
+                    "Nama Toko": str(row["Nama Toko"]),
+                    "Kecamatan": str(row["Kecamatan"]),
+                    "Alamat": str(row["Alamat"]),
+                    "Latitude": float(row["Latitude"]),
+                    "Longitude": float(row["Longitude"]),
+                    "Toko Sebelumnya": previous_store,
+                    "Jarak (km)": round(distance, 2) if distance is not None else None,
+                    "Navigasi Google Maps": (
+                        f"https://www.google.com/maps/dir/?api=1"
+                        f"&destination={row['Latitude']},{row['Longitude']}"
+                    ),
+                })
+            sheet_name = title[:31]
+            pd.DataFrame(rows).to_excel(writer, sheet_name=sheet_name, index=False)
+
+        workbook = writer.book
+        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
+        from openpyxl.worksheet.table import Table, TableStyleInfo
+
+        for table_number, worksheet in enumerate(workbook.worksheets, start=1):
+            worksheet.freeze_panes = "A2"
+            worksheet.auto_filter.ref = worksheet.dimensions
+            worksheet.row_dimensions[1].height = 32
+            for cell in worksheet[1]:
+                cell.font = Font(bold=True, color="FFFFFF")
+                cell.fill = PatternFill("solid", fgColor="1A73E8")
+                cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            for column_cells in worksheet.columns:
+                column_letter = get_column_letter(column_cells[0].column)
+                header = str(column_cells[0].value or "")
+                if header in {"Alamat", "Rute Kunjungan"}:
+                    width = 48
+                elif header == "Navigasi Google Maps":
+                    width = 44
+                elif header in {"Nama Toko", "Toko Sebelumnya", "Sektor / Kecamatan"}:
+                    width = 28
+                else:
+                    width = min(max(max(len(str(cell.value or "")) for cell in column_cells) + 2, 12), 24)
+                worksheet.column_dimensions[column_letter].width = width
+                if header == "Navigasi Google Maps":
+                    for cell in column_cells[1:]:
+                        if cell.value:
+                            cell.hyperlink = cell.value
+                            cell.style = "Hyperlink"
+                for cell in column_cells[1:]:
+                    cell.alignment = Alignment(vertical="top", wrap_text=header in {"Alamat", "Rute Kunjungan"})
+            if worksheet.max_row > 1 and worksheet.max_column > 0:
+                table = Table(
+                    displayName=f"Data{table_number}",
+                    ref=worksheet.dimensions,
+                )
+                table.tableStyleInfo = TableStyleInfo(
+                    name="TableStyleMedium2",
+                    showFirstColumn=False,
+                    showLastColumn=False,
+                    showRowStripes=True,
+                    showColumnStripes=False,
+                )
+                worksheet.add_table(table)
+
+    return buffer.getvalue()
+
+
+def save_detailed_workbook(data, output_path):
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    workbook = create_detailed_workbook(data)
+    output_path.write_bytes(workbook)
+    return output_path
