@@ -16,10 +16,10 @@ import requests
 from matplotlib.patches import Circle
 
 AREAS = {
-    "A1": ("Karawang Kota", "#0b8a7a", ["Karawang Bar."]),
+    "A1": ("Purwakarta", "#1a73e8", ["Purwakarta", "Plered"]),
     "A2": ("Karawang Timur", "#e8710a", ["Klari", "Cikampek"]),
-    "A3": ("Pantura Cilamaya-Pamanukan", "#8430ce", ["Cilamaya Wetan", "Pamanukan", "Binong"]),
-    "A4": ("Purwakarta", "#1a73e8", ["Purwakarta", "Plered"]),
+    "A3": ("Karawang Kota", "#0b8a7a", ["Karawang Bar."]),
+    "A4": ("Pantura Cilamaya-Pamanukan", "#8430ce", ["Cilamaya Wetan", "Pamanukan", "Binong"]),
     "A5": ("Subang Kota", "#d93025", ["Subang"]),
 }
 KEC2AREA = {district: code for code, (_, _, districts) in AREAS.items() for district in districts}

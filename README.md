@@ -22,6 +22,9 @@ agar perjalanan pendek tidak terlihat sebagai 0 km. File unduhan terbaru bernama
 `detail_toko_per_area_dan_sektor_revisi2.xlsx`. Ringkasan area juga menampilkan
 daftar kecamatan dan nama toko yang dikelompokkan menurut kecamatan.
 
+Pembagian sektor: A1 Purwakarta, A2 Karawang Timur, A3 Karawang Kota,
+A4 Pantura Cilamaya-Pamanukan, dan A5 Subang Kota.
+
 ## Jalankan lokal
 
 ```bash
