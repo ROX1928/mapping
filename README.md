@@ -16,6 +16,10 @@ Excel detail dapat diunduh dari bagian **Screenshot detail per area dan
 sektor**. Workbook berisi lembar ringkasan, lembar rute per area, dan lembar
 rute per kecamatan, dengan urutan kunjungan, jarak berkendara antar toko,
 alamat, koordinat, dan tautan navigasi.
+Jarak pada area/sektor dengan satu toko dibiarkan kosong dan diberi keterangan
+bahwa tidak ada rute antar toko; jarak lain ditampilkan hingga tiga angka desimal
+agar perjalanan pendek tidak terlihat sebagai 0 km. File unduhan terbaru bernama
+`detail_toko_per_area_dan_sektor_revisi.xlsx`.
 
 ## Jalankan lokal
 

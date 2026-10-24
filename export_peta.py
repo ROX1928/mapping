@@ -448,7 +448,10 @@ def create_detailed_workbook(data):
             "Area": area_name,
             "Sektor / Kecamatan": sector_name,
             "Jumlah Toko": len(ordered),
-            "Total Jarak Berkendara (km)": round(total_distance, 2),
+            "Total Jarak Berkendara (km)": round(total_distance, 3) if distances else None,
+            "Keterangan Jarak": (
+                "Tidak ada rute: hanya 1 toko" if not distances else "Total jarak rute jalan"
+            ),
             "Rute Kunjungan": " → ".join(ordered["Nama Toko"].astype(str)),
         })
         prepared_groups.append((title, ordered, distances))
@@ -470,7 +473,7 @@ def create_detailed_workbook(data):
                     "Latitude": float(row["Latitude"]),
                     "Longitude": float(row["Longitude"]),
                     "Toko Sebelumnya": previous_store,
-                    "Jarak (km)": round(distance, 2) if distance is not None else None,
+                    "Jarak (km)": round(distance, 3) if distance is not None else None,
                     "Navigasi Google Maps": (
                         f"https://www.google.com/maps/dir/?api=1"
                         f"&destination={row['Latitude']},{row['Longitude']}"
@@ -497,6 +500,8 @@ def create_detailed_workbook(data):
                 header = str(column_cells[0].value or "")
                 if header in {"Alamat", "Rute Kunjungan"}:
                     width = 48
+                elif header == "Keterangan Jarak":
+                    width = 34
                 elif header == "Navigasi Google Maps":
                     width = 44
                 elif header in {"Nama Toko", "Toko Sebelumnya", "Sektor / Kecamatan"}:
@@ -511,6 +516,8 @@ def create_detailed_workbook(data):
                             cell.style = "Hyperlink"
                 for cell in column_cells[1:]:
                     cell.alignment = Alignment(vertical="top", wrap_text=header in {"Alamat", "Rute Kunjungan"})
+                    if header in {"Jarak (km)", "Total Jarak Berkendara (km)"} and cell.value is not None:
+                        cell.number_format = "0.000"
             if worksheet.max_row > 1 and worksheet.max_column > 0:
                 table = Table(
                     displayName=f"Data{table_number}",

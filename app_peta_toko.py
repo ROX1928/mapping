@@ -574,7 +574,7 @@ with st.expander("🖼️ Screenshot detail per area dan sektor", expanded=False
         st.download_button(
             "⬇️ Download Excel detail (5 area + 9 sektor)",
             data=st.session_state["detail_workbook"],
-            file_name="detail_toko_per_area_dan_sektor.xlsx",
+            file_name="detail_toko_per_area_dan_sektor_revisi.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
