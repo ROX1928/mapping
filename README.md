@@ -21,8 +21,9 @@ melalui sidebar.
 2. Masuk ke [share.streamlit.io](https://share.streamlit.io/) dan pilih
    **Create app**.
 3. Pilih repositori, branch, dan `app_peta_toko.py` sebagai main file.
-4. Pilih **Deploy**. Aplikasi memakai CARTO Voyager tanpa API key secara
-   default.
+4. Pilih **Deploy**. Aplikasi memakai tile OpenStreetMap tanpa API key secara
+   default. Atribusi OpenStreetMap ditampilkan pada peta; penggunaan tile
+   mengikuti [Tile Usage Policy](https://operations.osmfoundation.org/policies/tiles/).
 
 Google Maps Tiles bersifat opsional. Untuk mengaktifkannya, tambahkan
 `GOOGLE_MAPS_API_KEY` melalui pengaturan **Secrets** aplikasi di Streamlit

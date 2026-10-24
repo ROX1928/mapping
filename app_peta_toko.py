@@ -6,7 +6,7 @@ Jalankan: streamlit run app_peta_toko.py
 Taruh Daftar_Toko_Motorola_Fixed.xlsx di folder yang sama (atau upload lewat sidebar).
 
 Opsional - peta Google resmi: set environment variable GOOGLE_MAPS_API_KEY
-(aktifkan "Map Tiles API" di Google Cloud). Tanpa key, dipakai peta CARTO Voyager.
+(aktifkan "Map Tiles API" di Google Cloud). Tanpa key, dipakai tile OpenStreetMap.
 """
 import os
 import urllib.parse
@@ -80,8 +80,11 @@ def build_map(df, sel, warna_area, cluster):
         except Exception as e:
             st.sidebar.warning(f"Google Map Tiles gagal ({str(e)[:60]}), pakai peta CARTO.")
     if not google_ok:
-        folium.TileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
-                         attr="© OpenStreetMap © CARTO", name="Peta", subdomains="abcd").add_to(m)
+        folium.TileLayer(
+            "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+            attr='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            name="OpenStreetMap",
+        ).add_to(m)
     folium.TileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
                      attr="Esri", name="Satelit", show=False).add_to(m)
     Fullscreen().add_to(m)
