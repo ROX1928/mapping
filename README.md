@@ -1,7 +1,8 @@
 # Peta Toko Motorola
 
-Aplikasi Streamlit untuk melihat lokasi toko per area, mencari toko, membuka
-navigasi Google Maps, dan mengunduh daftar toko sebagai CSV.
+Aplikasi Streamlit untuk melihat lokasi toko per area dengan lingkaran sektor,
+jalur kunjungan mengikuti jalan, label nama toko yang menyesuaikan posisi agar
+tidak bertumpuk, pencarian, navigasi Google Maps, dan unduhan CSV.
 
 ## Jalankan lokal
 
