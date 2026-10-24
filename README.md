@@ -3,8 +3,10 @@
 Aplikasi Streamlit untuk melihat lokasi toko per area dengan lingkaran sektor,
 jalur kunjungan mengikuti jalan, jarak berkendara antar toko berurutan, label
 nama toko yang menyesuaikan posisi agar tidak bertumpuk, pencarian, navigasi
-Google Maps, jarak km yang tampil langsung di setiap segmen jalur, unduhan CSV,
-serta screenshot PNG per area dan sektor yang dapat diunduh sebagai ZIP.
+Google Maps, jarak km yang tampil langsung di setiap segmen jalur, lingkaran
+sektor yang diperbesar agar terlihat saat zoom jauh dan kembali ke radius
+sebenarnya saat zoom dekat, unduhan CSV, serta screenshot PNG per area dan
+sektor yang dapat diunduh sebagai ZIP.
 
 Screenshot menampilkan basemap jalan, nomor dan daftar nama toko, rute, serta
 jarak berkendara dari toko sebelumnya. Peta dibuat saat tombol screenshot

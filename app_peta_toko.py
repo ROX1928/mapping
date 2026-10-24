@@ -212,7 +212,7 @@ def distance_label(distance_km):
     return f"{distance_km:.1f} km"
 
 
-def add_label_collision_layout(m, label_pairs):
+def add_label_collision_layout(m, label_pairs, sector_circles):
     m.get_root().header.add_child(Element("""
     <style>
       .store-name-icon { background: transparent; border: 0; }
@@ -261,11 +261,26 @@ def add_label_collision_layout(m, label_pairs):
     """))
     marker_names = ",".join(marker.get_name() for marker, _ in label_pairs)
     label_names = ",".join(label.get_name() for _, label in label_pairs)
+    sector_circle_names = ",".join(
+        f"{{layer:{circle.get_name()}, radius:{radius}}}"
+        for circle, radius in sector_circles
+    )
     script = f"""
     (function() {{
       const map = {m.get_name()};
       const markers = [{marker_names}];
       const labels = [{label_names}];
+      const sectorCircles = [{sector_circle_names}];
+      function resizeSectorCircles() {{
+        const zoom = map.getZoom();
+        sectorCircles.forEach(function(sector) {{
+          const latitude = sector.layer.getLatLng().lat;
+          const metersPerPixel = 156543.03392 * Math.cos(latitude * Math.PI / 180) /
+            Math.pow(2, zoom);
+          const visibleRadius = Math.min(32 * metersPerPixel, 16000);
+          sector.layer.setRadius(Math.max(sector.radius, visibleRadius));
+        }});
+      }}
       function arrangeLabels() {{
         const zoom = map.getZoom();
         const size = map.getSize();
@@ -322,7 +337,9 @@ def add_label_collision_layout(m, label_pairs):
         }});
       }}
       map.whenReady(function() {{
+        resizeSectorCircles();
         arrangeLabels();
+        map.on("zoomend", resizeSectorCircles);
         map.on("zoomend moveend resize", arrangeLabels);
         setTimeout(arrangeLabels, 100);
       }});
@@ -389,6 +406,7 @@ def build_map(df, sel, warna_area, cluster):
     layer = MarkerCluster().add_to(marker_group) if cluster else marker_group
     label_pairs = []
     label_group = folium.FeatureGroup(name="Nama toko").add_to(m)
+    sector_circles = []
     for kd, area_group in df.groupby("Kode Area", sort=True):
         if kd not in AREAS or area_group.empty:
             continue
@@ -403,11 +421,13 @@ def build_map(df, sel, warna_area, cluster):
             for row in area_group.itertuples()
         )
         area_layer = folium.FeatureGroup(name=f"Sektor {kd} · {area_name}").add_to(m)
-        folium.Circle(
-            center, radius=max(500, max_distance + 250), color=area_color,
+        actual_radius = max(500, max_distance + 250)
+        sector_circle = folium.Circle(
+            center, radius=actual_radius, color=area_color,
             weight=2, dash_array="8 6", fill=True, fill_opacity=0.07,
-            tooltip=f"Sektor {kd} · {area_name}",
+            tooltip=f"Sektor {kd} · {area_name} · zoom dekat untuk ukuran sebenarnya",
         ).add_to(area_layer)
+        sector_circles.append((sector_circle, actual_radius))
 
         ordered = visit_order(area_group)
         if len(ordered):
@@ -478,7 +498,7 @@ def build_map(df, sel, warna_area, cluster):
         ).add_to(label_group)
         label_pairs.append((marker, label))
     m.store_distances = distance_from_previous
-    add_label_collision_layout(m, label_pairs)
+    add_label_collision_layout(m, label_pairs, sector_circles)
     folium.LayerControl(collapsed=True).add_to(m)
     if sel is not None and sel in df.index:
         m.location = [df.Latitude[sel], df.Longitude[sel]]
@@ -551,7 +571,8 @@ warna_area = st.sidebar.toggle(
 cluster = st.sidebar.toggle("Gabungkan pin berdekatan", value=False)
 st.sidebar.caption(
     "Toko dalam jarak 300 m dibedakan dengan warna pin dan ikon toko. Lingkaran menandai sektor; "
-    "jalur mengikuti urutan kunjungan. Nama toko muncul saat zoom dan label menghindari tumpang tindih."
+    "saat zoom jauh lingkaran diperbesar agar terlihat, lalu kembali ke radius sebenarnya saat diperbesar. "
+    "Jalur mengikuti urutan kunjungan; nama toko muncul saat zoom dan label menghindari tumpang tindih."
 )
 
 kode = [a.split(" · ")[0] for a in area_pilih]
